@@ -77,7 +77,7 @@ function updateOpportunityPermissions(tenantId, processHandle, params) {
 
 ### Api
 
-__setCustomProcessImpl()__
+__setCustomProcessImpl(processService)__
 
 @deprecated
 More details will be added about this.
@@ -133,7 +133,7 @@ zerv.shutdown(10);
 - Should allow custom load balancing strategies (ex based on tenant restrictions, one tenant could have more allocated slot to run processes than another)
 - large result should not be broadcasted but store in redis, and process should return a cursor id (similar to SF)
 - have an option to restart a process a limited number of times if it crashes. Currently it will keep retrying. In theory developer should cache all exceptions in their implemented process. On the other hand, the infrastructure should restart down servers so there is little chance to go to infinite loop.
-- Implement scheduler, and process should be able to decide if it should restart or not.
+- waitForCompletion could have a timeout to give up. Currently waitForCompletion will wait until the process completes even though it might have crashed and was restarted by a different server.
 - Add option to distribute zerv api server apis (api route can be easily distributed)
 - Add ability to change zerv worker capacity in real time
 - create a real time zerv monitor of the processes distribution (relies on subscription)
