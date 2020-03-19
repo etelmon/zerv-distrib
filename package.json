@@ -27,6 +27,7 @@
         "ioredis-lock": "4.0.0",
         "lodash": "4.17.15",
         "moment": "2.24.0",
+        "redlock": "^4.1.0",
         "uuid": "3.4.0",
         "zlog4js": "1.0.5"
     },
