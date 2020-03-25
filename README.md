@@ -5,9 +5,7 @@
 ### Scope
 Simple process load distribution in a Zerv Server cluster to improve responsiveness of the main Zerv socket application servers.
 
-This is a proof of concept that demonstrates that distributing processes in a Zerv environment is easily attainable and offers major performance improvement over the whole Zerv cluster in a few lines of code.
-
-This initial library code is not yet unit tested.
+This demonstrates that distributing processes in a Zerv environment is easily attainable and offers major performance improvement over the whole Zerv cluster in a few lines of code.
 
 ### pre-requisite
 This relies on both zerv-core and zerv-sync libraries as well as redis to store the process queue.
@@ -56,11 +54,14 @@ On the server that will consume this process (it could be the same as the server
 Then the server will monitor the queur.
 
 ```javascript
-function monitorQueue(serverId, port) {
+function monitorQueue() {
     zerv.addProcessType('UpdateSfPermission', sfPermisionService.updateOpportunityPermissions, {
         gracePeriodInMins: 5, // if in 5 minutes the process did not come back, it must be crashed. it will restart by itself
     });
-    zerv.monitorQueue(serverId, port,  process.env.MAX_CAPACITY || 5);
+    // this is a requirement to check the server statuses before monitoring the queue
+    zerv.monitorServerStatus('aPermissionServer', 'your code base version');
+
+    zerv.monitorQueue(process.env.MAX_CAPACITY || 5);
 }
 
 
@@ -77,24 +78,41 @@ function updateOpportunityPermissions(tenantId, processHandle, params) {
 
 ### Api
 
-__setCustomProcessImpl()__
+__monitorServerStatus(serverName, appVersion, options)__
 
-@deprecated
-More details will be added about this.
+{String} serverName is the type of server so that it can be identified in the cluster. 
 
-__monitorQueue(serverUnigName, port, capacity)__
+{String} appVersion is the code base version for log purposes.
+
+{object} options
+- {Number} serverStayAliveInSecs how often the server notifies that it is alive
+- {Number} serverStayAliveTimeoutInSecs how long before server is considered offline. By default 4*serverStayAliveInSecs
+
+
+This function listens to the server status that is notified by other servers fo the cluster and commands to shutdown.
+It also notifies periodically this local server server status to the cluster.
+
+The server status contains server identity, current activities in progress, and user sessions.
+
+
+__monitorQueue(capacity)__
 
 This function launches the monitoring of the process queue by the current server.
+
+The function monitorServerStatus must be called first in order to:
+- identify server owner of processes 
+- and detect if processes are stalled due to down servers.
 
 Provide any port the server might be listening to.
 
 capacity is key. the algorithm is currently simple. It limits the number of processes run by the server.
-
 It depends on the server physical capacity. If the number is too high, the server could become unresponsive and take a while to recover.
 
 __addProcessType(name, processImplementation, options)__
 
-This function declares which process types are handle by the server that will be monitoring the queue.
+{String} name: It is the name of the process handles by the server that was submitted by submitProcess function
+
+{Function} processImplementation: It provides the how process is implemented by the server that will be monitoring the queue.
 
 the processImplementation receives an handle.
 the handle is practical to update the process status visible in logs (setProgressDescription) and to test if the server is shutting down.
@@ -103,23 +121,31 @@ the process implementation must return an object with the following properties
 - {Object} data: data to return to the requester
 - {String} description: message about its completion to show in logs.
 
-The option is gracePeriodInMins. Be careful to provide a value high enough otherwise the server could restart the process before its completion, which could lead to saturating the server.
+{Object} options:
+- {Number} gracePeriodInMins: Be careful to provide a value high enough otherwise the server could restart the process before its completion, which could lead to saturating the server.
+- {Number} wasteTimeInSecs: This will add a duration to a process execution useful to simulate/test more concurrency
+- {Number} priority: When multiple processes are in the queue, the highest priority will executed first. by default priority is 10.
+ 
 
-__submitProcess__
+__submitProcess(tenantId, type, name, params, options)__
 
 This function submits a new process with its parameters. The type must be declared by a monitoring server otherwise the process will never get executed.
 
-Processes have a uniq name. If another process with the same name is submitted again while the first one is not completed, no other process is created.
-The existing process is actually returned.
+{String} tenantId: the id of the tenant executing the process
 
-__waitForCompletion__
+{String} type: the name of the process type handled by a server (addProcessType)
+
+{String} name: it is a uniq name/hashkey for this process type to identify different processes of the same types. mostly help for logs
+
+{Object} options: 
+- {Boolean} single: If single is true and another process with the same name is submitted again while the first one is not completed, no other process is created. The existing process is actually returned. By default true.
+
+__waitForCompletion(process, timeoutInSecs)__
 
 This function waits for the completion of a process.
 
-Processes have a uniq name. If another process with the same name is submitted again while the first one is not completed, the new submission will use the existing process and wait for it to complete.
-No other process is actually created.
-
 __shutdown(delay)__
+
 The function executes a safe and graceful shutdown of the whole zerv cluster.
 It will exit all zerv instance nodes when all activities (api calls or started processes) completed and will not execute any further activity.
 ```javascript
@@ -128,7 +154,6 @@ zerv.shutdown(10);
 
 ### To Implement
 
-- NO UNIT TESTS YET!!!!!
 - implement shutdownServer of a specific server remotely in addition to the existing shutdown function
 - Should allow custom load balancing strategies (ex based on tenant restrictions, one tenant could have more allocated slot to run processes than another)
 - large result should not be broadcasted but store in redis, and process should return a cursor id (similar to SF)
